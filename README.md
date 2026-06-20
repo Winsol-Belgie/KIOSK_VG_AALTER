@@ -105,13 +105,18 @@ Dit token staat in de Authorization header van de HTTP-actie in Power Automate.
 Token is aangemaakt op het account van gwenn.vanthournout@winsol.eu.  
 Als het token verloopt: nieuw token aanmaken op github.com → Settings → Developer settings → Personal access tokens → scope `gist`.
 
+Er zit een token in de export van de flow, maar die is vervallen wegens "exposed" op github. Dit token is dus niet meer de correcte versie.
+Check de flow bij Gwenn voor de werkende token.
+
 ---
 
 ## Power Automate flow (backup)
 
-De flow is geëxporteerd en staat in deze repository als referentie en backup.
+> 🚫 **De flow-export (.zip) mag NIET in deze publieke repository worden geplaatst.**  
+> De zip bevat de volledige configuratie inclusief het GitHub token in de Authorization header. GitHub detecteert dit automatisch en trekt het token in.  
+> Bewaar de export lokaal of in een **private** omgeving (bv. SharePoint).
 
-> ⚠️ **Let op bij importeren:** de export bevat geen verbindingen of tokens. Bij een herinstallatie moet je het volgende opnieuw instellen:
+> ⚠️ **Let op bij importeren:** bij een herinstallatie moet je het volgende opnieuw instellen:
 > - De **Office 365 Outlook-verbinding** (authenticeren met gwenn.vanthournout@winsol.eu of een ander account met toegang tot VG_Balie_Aalter@winsol.eu)
 > - Het **GitHub token** in de Authorization header van de laatste HTTP-actie (zie sectie hierboven)
 > - De **Gist ID** in de PUT-URL van de laatste HTTP-actie
