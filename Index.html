@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Balie Aalter 16P</title>
+
+  <!-- ============================================================
+    CONFIGURATIE — enkel dit aanpassen
+  ============================================================ -->
+  <script>
+    const CONFIG = {
+      dataUrl: 'https://gist.githubusercontent.com/GwennVanthournout/de0ae2431d0ad466bf3dd9a4497313ae/raw/events.json',
+      roomLabel: 'Balie Aalter — 16P',
+      refreshMinutes: 5,
+      dayStart: 7,   // eerste uur op de tijdlijn
+      dayEnd:   19   // laatste uur op de tijdlijn
+    };
+  </script>
+  <!-- ============================================================ -->
+
+  <style>
+    :root {
+      color-scheme: light;
+      --yellow: #FFC800;
+      --yellow-dark: #E6B400;
+      --black:  #1A1A1A;
+      --red:    #dc2626;
+      --gray:   #9ca3af;
+      --border: #e5e7eb;
+      --bg:     #f8f8f8;
+    }
+    * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+
+    html, body {
+      height: 100%;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+    }
+
+    #app {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── Header ── */
+    .header {
+      background: var(--black);
+      color: #fff;
+      padding: 10px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-shrink: 0;
+    }
+    .room-name { font-size: 1.25rem; font-weight: 800; letter-spacing: .3px; }
+    .room-sub  { font-size: .68rem; opacity: .45; margin-top: 2px; }
+    .clock-time {
+      font-size: 2.2rem; font-weight: 200;
+      font-variant-numeric: tabular-nums;
+      text-align: right; line-height: 1;
+      color: var(--yellow);
+    }
+    .clock-date { font-size: .68rem; opacity: .45; text-align: right; margin-top: 3px; }
+
+    /* ── Day nav ── */
+    .day-nav {
+      background: #fff;
+      border-bottom: 2px solid var(--yellow);
+      padding: 7px 18px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    .nav-btn {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 5px 14px;
+      font-size: 1.1rem;
+      cursor: pointer;
+      color: var(--black);
+      line-height: 1;
+      font-weight: 700;
+    }
+    .nav-btn:active { background: var(--border); }
+    .nav-today {
+      background: var(--yellow);
+      color: var(--black);
+      border-color: var(--yellow);
+      font-size: .78rem;
+      font-weight: 800;
+      padding: 5px 12px;
+      letter-spacing: .3px;
+    }
+    .nav-today:active { background: var(--yellow-dark); }
+    .nav-date {
+      flex: 1;
+      text-align: center;
+      font-size: .95rem;
+      font-weight: 700;
+      color: var(--black);
+    }
+
+    /* ── Status panel ── */
+    .status-panel {
+      background: #fff;
+      margin: 10px 14px 6px;
+      border-radius: 10px;
+      padding: 14px 18px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.07);
+      flex-shrink: 0;
+      border-left: 5px solid var(--yellow);
+    }
+    .badge {
+      min-width: 96px;
+      padding: 10px 14px;
+      border-radius: 7px;
+      text-align: center;
+      font-size: 1.25rem;
+      font-weight: 900;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      flex-shrink: 0;
+    }
+    .vrij  {
+      background: var(--yellow);
+      color: var(--black);
+    }
+    .bezet {
+      background: var(--red);
+      color: #fff;
+      box-shadow: 0 3px 10px rgba(220,38,38,.3);
+    }
+    .neutral { background: var(--gray); color: #fff; }
+
+    .status-info { flex: 1; min-width: 0; }
+    .s-title {
+      font-size: 1.1rem; font-weight: 800; color: var(--black);
+      margin-bottom: 3px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .s-line  { font-size: .82rem; color: #6b7280; margin-bottom: 2px; }
+    .s-line strong { color: var(--black); }
+    .s-next  { font-size: .78rem; color: #6b7280; margin-top: 5px; }
+
+    /* ── Timeline ── */
+    .timeline-outer {
+      flex: 1;
+      overflow: hidden;
+      position: relative;
+      background: #fff;
+      margin: 0 14px 0;
+      border-radius: 10px 10px 0 0;
+      box-shadow: 0 2px 8px rgba(0,0,0,.05);
+    }
+    /* inner fills the full outer — labels live at left:0, events start at LBL_W */
+    .timeline-inner {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+    }
+    .hour-line {
+      position: absolute;
+      left: 0; right: 0;
+      border-top: 1px solid var(--border);
+    }
+    .half-line {
+      position: absolute;
+      left: 0; right: 0;
+      border-top: 1px dashed #f3f4f6;
+    }
+    .hour-lbl {
+      position: absolute;
+      left: 0;
+      width: 48px;
+      text-align: right;
+      padding-right: 7px;
+      font-size: .78rem;
+      color: #555;
+      font-variant-numeric: tabular-nums;
+      transform: translateY(-50%);
+      white-space: nowrap;
+      font-weight: 700;
+    }
+    /* vertical separator between label column and event area */
+    .hour-sep {
+      position: absolute;
+      top: 0; bottom: 0;
+      left: 48px;
+      width: 1px;
+      background: var(--border);
+    }
+    .mtg-block {
+      position: absolute;
+      left: 52px; right: 6px;
+      border-radius: 7px;
+      padding: 4px 8px;
+      overflow: hidden;
+      box-shadow: 0 2px 5px rgba(0,0,0,.15);
+    }
+    .mtg-block.past    { background: #e5e7eb; color: #6b7280; }
+    .mtg-block.current { background: var(--red); color: #fff; }
+    .mtg-block.soon    { background: var(--yellow); color: var(--black); }
+    .mtg-name { font-weight: 800; font-size: .78rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .mtg-time { font-size: .64rem; opacity: .8; margin-top: 1px; }
+
+    .now-line {
+      position: absolute;
+      left: 48px; right: 0;
+      height: 2px;
+      background: var(--red);
+      z-index: 20;
+    }
+    .now-dot {
+      position: absolute;
+      left: 0; top: -4px;
+      width: 9px; height: 9px;
+      background: var(--red);
+      border-radius: 50%;
+    }
+
+    /* ── Footer ── */
+    .footer {
+      padding: 5px 14px;
+      background: var(--black);
+      display: flex;
+      justify-content: space-between;
+      font-size: .6rem;
+      color: rgba(255,255,255,.35);
+      flex-shrink: 0;
+    }
+    .stale { color: var(--yellow); font-weight: 700; }
+
+    .empty { text-align: center; color: var(--gray); padding: 28px; font-size: .88rem; }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <div class="header">
+    <div>
+      <div class="room-name" id="room-label"></div>
+      <div class="room-sub">Vergaderruimte — Winsol</div>
+    </div>
+    <div>
+      <div class="clock-time" id="ct">--:--</div>
+      <div class="clock-date" id="cd">--</div>
+    </div>
+  </div>
+
+  <div class="day-nav">
+    <button class="nav-btn" onclick="changeDay(-1)">‹</button>
+    <button class="nav-btn nav-today" onclick="goToday()">Vandaag</button>
+    <div class="nav-date" id="nav-date">--</div>
+    <button class="nav-btn" onclick="changeDay(1)">›</button>
+  </div>
+
+  <div class="status-panel" id="status-panel">
+    <div class="badge neutral" style="font-size:.85rem;letter-spacing:0">…</div>
+    <div class="status-info"><div class="s-line">Laden…</div></div>
+  </div>
+
+  <div class="timeline-outer" id="timeline-outer">
+    <div class="timeline-inner" id="timeline-inner">
+      <div class="empty">Laden…</div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <span id="sync-info">—</span>
+    <span id="fetch-ts">—</span>
+  </div>
+
+</div>
+<script>
+  /* ---- Helpers ---- */
+  const fmtT = iso => new Date(iso).toLocaleTimeString('nl-BE',{hour:'2-digit',minute:'2-digit'});
+  const esc  = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+  /* ---- State ---- */
+  let viewDate = new Date(); viewDate.setHours(0,0,0,0);
+  let cachedData = null;
+
+  /* ---- Clock ---- */
+  function tick() {
+    const n = new Date();
+    document.getElementById('ct').textContent = n.toLocaleTimeString('nl-BE',{hour:'2-digit',minute:'2-digit'});
+    document.getElementById('cd').textContent = n.toLocaleDateString('nl-BE',{weekday:'long',day:'numeric',month:'long'});
+  }
+  tick(); setInterval(tick, 1000);
+
+  /* ---- Nav ---- */
+  const isToday = d => { const t=new Date();t.setHours(0,0,0,0);return d.getTime()===t.getTime(); };
+  function renderNav() {
+    const s = viewDate.toLocaleDateString('nl-BE',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+    document.getElementById('nav-date').textContent = s.charAt(0).toUpperCase()+s.slice(1);
+  }
+  function changeDay(d) {
+    viewDate = new Date(viewDate); viewDate.setDate(viewDate.getDate()+d);
+    renderNav(); render();
+  }
+  function goToday() {
+    viewDate = new Date(); viewDate.setHours(0,0,0,0);
+    renderNav(); fetchAndRender();
+  }
+
+  /* ---- Normalize ---- */
+  function norm(e) {
+    const startIso = e.start?.dateTime ? e.start.dateTime+'Z' : e.start;
+    const endIso   = e.end?.dateTime   ? e.end.dateTime+'Z'   : e.end;
+    const org = typeof e.organizer==='object'
+      ? (e.organizer?.emailAddress?.name || e.organizer?.emailAddress?.address || '—')
+      : (e.organizer||'—');
+
+    // Count attendees from Graph API array (exclude room resources)
+    let req = 0, opt = 0;
+    if (Array.isArray(e.attendees)) {
+      e.attendees.forEach(a => {
+        const t = (a.type||'').toLowerCase();
+        if (t === 'resource') return;           // skip the room itself
+        if (t === 'optional') opt++;
+        else req++;                             // 'required' or unknown
+      });
+    }
+
+    // Build label suffix: "(3p)" or "(3p + 1opt)"
+    let pax = '';
+    if (req > 0 || opt > 0) {
+      pax = req > 0 ? `${req}p` : '';
+      if (opt > 0) pax += (pax ? ` + ${opt}opt` : `${opt}opt`);
+      pax = ` (${pax})`;
+    }
+
+    return { organizer:org, pax, start:startIso, end:endIso, _s:new Date(startIso), _e:new Date(endIso) };
+  }
+
+  /* ---- Fetch ---- */
+  async function fetchAndRender() {
+    try {
+      const url = CONFIG.dataUrl + (CONFIG.dataUrl.includes('?')?'&':'?')+'_t='+Date.now();
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(res.status);
+      cachedData = await res.json();
+    } catch(e) { console.warn('Fetch fout:', e.message); }
+    render();
+  }
+
+  /* ---- Render ---- */
+  function render() {
+    const now   = new Date();
+    const today = isToday(viewDate);
+    const dayStart = new Date(viewDate); dayStart.setHours(0,0,0,0);
+    const dayEnd   = new Date(viewDate); dayEnd.setHours(23,59,59,999);
+
+    const events = cachedData
+      ? (cachedData.events||[]).map(norm).filter(e=>e._s<dayEnd&&e._e>dayStart).sort((a,b)=>a._s-b._s)
+      : [];
+
+    const current = today ? events.find(e=>e._s<=now&&e._e>now) : null;
+    const next    = today ? events.find(e=>e._s>now) : null;
+
+    /* Status panel */
+    const panel = document.getElementById('status-panel');
+    panel.style.borderLeftColor = current ? 'var(--red)' : today ? 'var(--yellow)' : '#e5e7eb';
+
+    if (!cachedData) {
+      panel.innerHTML = `<div class="badge neutral" style="font-size:.78rem">Fout</div>
+        <div class="status-info"><div class="s-line">Kan data niet ophalen</div></div>`;
+    } else if (!today) {
+      panel.innerHTML = `<div class="badge neutral" style="min-width:70px;font-size:.82rem;letter-spacing:0">
+          ${events.length} mtg</div>
+        <div class="status-info">
+          <div class="s-title" style="color:#6b7280;font-size:.95rem">${events.length===0?'Niets gepland':'Meetings deze dag'}</div>
+        </div>`;
+    } else if (current) {
+      panel.innerHTML = `<div class="badge bezet">Bezet</div>
+        <div class="status-info">
+          <div class="s-title">${esc(current.organizer)}${current.pax?` <span style="font-weight:500;color:#6b7280;font-size:.9rem">${esc(current.pax)}</span>`:''}</div>
+          <div class="s-line">📅 ${fmtT(current.start)} – ${fmtT(current.end)}</div>
+          ${next?`<div class="s-next">Volgende: <strong>${esc(next.organizer)}${next.pax?' '+esc(next.pax):''}</strong> om ${fmtT(next.start)}</div>`:''}
+        </div>`;
+    } else {
+      panel.innerHTML = `<div class="badge vrij">Vrij</div>
+        <div class="status-info">
+          <div class="s-title">Beschikbaar</div>
+          ${next
+            ?`<div class="s-line">Volgende: <strong>${esc(next.organizer)}${next.pax?' '+esc(next.pax):''}</strong> om <strong>${fmtT(next.start)}</strong></div>`
+            :`<div class="s-line">Geen verdere meetings vandaag</div>`}
+        </div>`;
+    }
+
+    /* Timeline */
+    renderTimeline(events, today, now);
+
+    /* Footer */
+    const syncTime = cachedData?.synced ? new Date(cachedData.synced) : null;
+    const age = syncTime ? Math.round((now-syncTime)/60000) : null;
+    const stale = age!==null && age>20;
+    document.getElementById('sync-info').innerHTML = syncTime
+      ? `<span class="${stale?'stale':''}">Sync: ${fmtT(syncTime.toISOString())}${stale?' ⚠️':''}</span>` : '—';
+    document.getElementById('fetch-ts').textContent =
+      'Ververst: '+now.toLocaleTimeString('nl-BE',{hour:'2-digit',minute:'2-digit'});
+  }
+
+  /* ---- Timeline ---- */
+  function renderTimeline(events, today, now) {
+    const wrap = document.getElementById('timeline-outer');
+    const inner = document.getElementById('timeline-inner');
+    const availH = wrap.clientHeight;
+    if (availH < 10) { setTimeout(()=>render(),100); return; }
+
+    // Hour range
+    let H0 = CONFIG.dayStart, H1 = CONFIG.dayEnd;
+    events.forEach(e => {
+      const sh = e._s.getHours();
+      const eh = e._e.getHours() + (e._e.getMinutes()>0?1:0);
+      if (sh < H0) H0 = sh;
+      if (eh > H1) H1 = eh;
+    });
+    if (today) {
+      const ch = now.getHours();
+      if (ch < H0) H0 = ch;
+      if (ch+1 > H1) H1 = ch+1;
+    }
+    const totalH = Math.max(1, H1 - H0);
+    const PX = availH / totalH;  // pixels per hour — fills screen exactly
+
+    if (events.length === 0 && !today) {
+      inner.innerHTML = `<div class="empty">Geen meetings gepland</div>`;
+      return;
+    }
+
+    // Gray-band hours (e.g. 7-8, 12-13, 18-19)
+    const GRAY_BANDS = [7, 12, 18];
+
+    let html = `<div style="position:relative;height:${availH}px;">`;
+    html += `<div class="hour-sep"></div>`;
+
+    // Gray bands (drawn first, behind everything)
+    GRAY_BANDS.forEach(bh => {
+      if (bh >= H0 && bh < H1) {
+        const by = (bh - H0) * PX;
+        html += `<div style="position:absolute;left:0;right:0;top:${by}px;height:${PX}px;background:#f3f4f6;z-index:0;"></div>`;
+      }
+    });
+
+    // Hour lines
+    for (let h = H0; h <= H1; h++) {
+      const y = (h - H0) * PX;
+      html += `<div class="hour-line" style="top:${y}px;z-index:1;">
+        <span class="hour-lbl">${h}:00</span>
+      </div>`;
+      if (h < H1) html += `<div class="half-line" style="top:${y + PX/2}px;left:48px;z-index:1;"></div>`;
+    }
+
+    // Meeting blocks
+    events.forEach(e => {
+      const sH = e._s.getHours() + e._s.getMinutes()/60;
+      const eH = e._e.getHours() + e._e.getMinutes()/60;
+      const top    = (sH - H0) * PX;
+      const height = Math.max(18, (eH - sH) * PX - 3);
+      const isCur  = today && e._s <= now && e._e > now;
+      const isPast = e._e <= now;
+      const cls    = isCur ? 'current' : isPast ? 'past' : 'soon';
+      const timeStr = `${fmtT(e.start)} – ${fmtT(e.end)}`;
+      const paxSpan = e.pax ? `<span style="font-weight:500;opacity:.8"> ${esc(e.pax)}</span>` : '';
+
+      // Small block: time inline after name; tall block: time on second line
+      const nameHtml = height < 32
+        ? `<div class="mtg-name">${esc(e.organizer)}${paxSpan} <span style="font-weight:400;opacity:.75;font-size:.62rem">${timeStr}</span></div>`
+        : `<div class="mtg-name">${esc(e.organizer)}${paxSpan}</div><div class="mtg-time">${timeStr}</div>`;
+
+      html += `<div class="mtg-block ${cls}" style="top:${top}px;height:${height}px;z-index:2;">${nameHtml}</div>`;
+    });
+
+    // Now line
+    if (today) {
+      const nH = now.getHours() + now.getMinutes()/60;
+      if (nH >= H0 && nH <= H1) {
+        const nY = (nH - H0) * PX;
+        html += `<div class="now-line" id="now-line" style="top:${nY}px;">
+          <div class="now-dot"></div>
+        </div>`;
+      }
+    }
+
+    html += '</div>';
+    inner.innerHTML = html;
+  }
+
+  // Update now-line every minute without full re-render
+  setInterval(() => {
+    const line = document.getElementById('now-line');
+    if (!line) return;
+    const wrap = document.getElementById('timeline-outer');
+    const H0 = CONFIG.dayStart, H1 = CONFIG.dayEnd;
+    const PX = wrap.clientHeight / Math.max(1, H1 - H0);
+    const now = new Date();
+    const nH = now.getHours() + now.getMinutes()/60;
+    line.style.top = ((nH - H0) * PX) + 'px';
+  }, 60000);
+
+  // Re-render on resize (iPad rotation)
+  window.addEventListener('resize', render);
+
+  /* ---- Boot ---- */
+  document.getElementById('room-label').textContent = CONFIG.roomLabel;
+  renderNav();
+  fetchAndRender();
+  setInterval(fetchAndRender, CONFIG.refreshMinutes * 60 * 1000);
+</script>
+</body>
+</html>
