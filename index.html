@@ -287,12 +287,32 @@
   /* ---- State ---- */
   let viewDate = new Date(); viewDate.setHours(0,0,0,0);
   let cachedData = null;
+  let lastDate = new Date().toDateString();   // midnight detection
+  let inactivityTimer = null;
+  const INACTIVITY_MS = 2 * 60 * 1000;       // 2 minuten
 
-  /* ---- Clock ---- */
+  /* ---- Inactivity: terug naar vandaag na 2 min zonder aanraking ---- */
+  function resetInactivity() {
+    clearTimeout(inactivityTimer);
+    inactivityTimer = setTimeout(function() {
+      if (!isToday(viewDate)) { goToday(); }
+    }, INACTIVITY_MS);
+  }
+  document.addEventListener('touchstart', resetInactivity);
+  document.addEventListener('click', resetInactivity);
+  resetInactivity(); // start timer bij laden
+
+  /* ---- Clock + midnight detection ---- */
   function tick() {
     const n = new Date();
     document.getElementById('ct').textContent = n.toLocaleTimeString('nl-BE',{hour:'2-digit',minute:'2-digit'});
     document.getElementById('cd').textContent = n.toLocaleDateString('nl-BE',{weekday:'long',day:'numeric',month:'long'});
+    // Automatisch naar nieuwe dag om middernacht
+    const today = n.toDateString();
+    if (today !== lastDate) {
+      lastDate = today;
+      goToday();
+    }
   }
   tick(); setInterval(tick, 1000);
 
