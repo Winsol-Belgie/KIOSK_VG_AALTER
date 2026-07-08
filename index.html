@@ -257,6 +257,29 @@
       border-radius: 50%;
     }
 
+    /* ── Alert overlay ── */
+    .alert-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      display: flex; align-items: center; justify-content: center;
+      z-index: 100;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity .3s;
+    }
+    .alert-overlay.visible { opacity: 1; }
+    .alert-box {
+      border-radius: 20px;
+      padding: 36px 56px;
+      text-align: center;
+      box-shadow: 0 8px 40px rgba(0,0,0,.7);
+    }
+    .alert-box.warn10 { background: var(--yellow); color: #000; }
+    .alert-box.warn5  { background: var(--red);    color: #fff; }
+    .alert-icon { font-size: 3.5rem; line-height: 1; margin-bottom: 10px; }
+    .alert-msg  { font-size: 2.8rem; font-weight: 900; letter-spacing: .5px; }
+    .alert-sub  { font-size: 1.1rem; font-weight: 600; margin-top: 8px; opacity: .75; }
+
     /* ── Footer ── */
     .footer {
       padding: 5px 14px;
@@ -306,11 +329,77 @@
     <span id="fetch-ts">—</span>
   </div>
 
+  <div class="alert-overlay" id="alert-overlay">
+    <div class="alert-box" id="alert-box">
+      <div class="alert-icon" id="alert-icon"></div>
+      <div class="alert-msg"  id="alert-msg"></div>
+      <div class="alert-sub"  id="alert-sub"></div>
+    </div>
+  </div>
+
 </div>
 <script>
   /* ---- Helpers ---- */
   const fmtT = iso => new Date(iso).toLocaleTimeString('nl-BE',{hour:'2-digit',minute:'2-digit'});
   const esc  = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+  /* ---- Audio ---- */
+  var audioCtx = null;
+  function unlockAudio() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+  }
+  document.addEventListener('touchstart', unlockAudio, { passive: true });
+  document.addEventListener('click', unlockAudio);
+
+  function beep(freq, duration, delay) {
+    if (!audioCtx) return;
+    var osc = audioCtx.createOscillator();
+    var env = audioCtx.createGain();
+    var d   = delay || 0;
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+    env.gain.setValueAtTime(0, audioCtx.currentTime + d);
+    env.gain.linearRampToValueAtTime(0.4, audioCtx.currentTime + d + 0.03);
+    env.gain.linearRampToValueAtTime(0,   audioCtx.currentTime + d + duration);
+    osc.connect(env);
+    env.connect(audioCtx.destination);
+    osc.start(audioCtx.currentTime + d);
+    osc.stop(audioCtx.currentTime  + d + duration + 0.05);
+  }
+
+  /* ---- Alert overlay ---- */
+  var alertedMeetings = {};
+  var alertTimer = null;
+
+  function showAlert(minutes) {
+    var is10 = minutes === 10;
+    var overlay = document.getElementById('alert-overlay');
+    var box     = document.getElementById('alert-box');
+    document.getElementById('alert-icon').textContent = is10 ? '⏰' : '⚠️';
+    document.getElementById('alert-msg').textContent  = is10 ? '10 minutes left' : '5 minutes left';
+    document.getElementById('alert-sub').textContent  = 'This meeting is ending soon';
+    box.className = 'alert-box ' + (is10 ? 'warn10' : 'warn5');
+    overlay.classList.add('visible');
+    // Beep
+    if (is10) {
+      beep(660, 0.6, 0);
+    } else {
+      beep(880, 0.35, 0);
+      beep(880, 0.35, 0.45);
+    }
+    // Auto-dismiss after 8 seconds
+    clearTimeout(alertTimer);
+    alertTimer = setTimeout(function() {
+      overlay.classList.remove('visible');
+    }, 8000);
+  }
+
+  // Dismiss on tap
+  document.getElementById('alert-overlay').addEventListener('click', function() {
+    clearTimeout(alertTimer);
+    document.getElementById('alert-overlay').classList.remove('visible');
+  });
 
   /* ---- State ---- */
   let viewDate = new Date(); viewDate.setHours(0,0,0,0);
@@ -354,7 +443,10 @@
   document.addEventListener('click', resetInactivity);
   resetInactivity(); // start timer bij laden
 
-  /* ---- Clock + midnight detection ---- */
+  /* ---- Nav helpers (vroeg gedefinieerd zodat tick() ze kan gebruiken) ---- */
+  const isToday = function(d) { var t=new Date();t.setHours(0,0,0,0);return d.getTime()===t.getTime(); };
+
+  /* ---- Clock + midnight detection + meeting end alerts ---- */
   function tick() {
     const n = new Date();
     document.getElementById('ct').textContent = n.toLocaleTimeString('nl-BE',{hour:'2-digit',minute:'2-digit'});
@@ -365,11 +457,33 @@
       lastDate = today;
       goToday();
     }
+    // Meeting end alerts (alleen vandaag)
+    if (isToday(viewDate) && cachedData) {
+      var roomEvents = [];
+      var roomData = cachedData[selectedRoom];
+      if (Array.isArray(roomData)) roomEvents = roomData;
+      else if (roomData && Array.isArray(roomData.events)) roomEvents = roomData.events;
+      roomEvents.forEach(function(raw) {
+        var e = norm(raw);
+        if (e._e <= n) return;  // al voorbij
+        if (e._s > n) return;   // nog niet begonnen
+        var msLeft = e._e - n;
+        var minLeft = Math.floor(msLeft / 60000);
+        [10, 5].forEach(function(threshold) {
+          if (minLeft === threshold) {
+            var key = e.start + ':' + threshold;
+            if (!alertedMeetings[key]) {
+              alertedMeetings[key] = true;
+              showAlert(threshold);
+            }
+          }
+        });
+      });
+    }
   }
   tick(); setInterval(tick, 1000);
 
   /* ---- Nav ---- */
-  const isToday = d => { const t=new Date();t.setHours(0,0,0,0);return d.getTime()===t.getTime(); };
   function renderNav() {
     const s = viewDate.toLocaleDateString('nl-BE',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
     document.getElementById('nav-date').textContent = s.charAt(0).toUpperCase()+s.slice(1);
