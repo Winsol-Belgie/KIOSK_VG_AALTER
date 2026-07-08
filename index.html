@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <title>Balie Aalter 16P</title>
+  <title>Meeting Room Display</title>
 
   <!-- ============================================================
     CONFIGURATIE — enkel dit aanpassen
@@ -13,7 +13,10 @@
   <script>
     const CONFIG = {
       dataUrl: 'https://gist.githubusercontent.com/GwennVanthournout/de0ae2431d0ad466bf3dd9a4497313ae/raw/events.json',
-      roomLabel: 'Balie Aalter — 16P',
+      rooms: [
+        { key: 'balie',   label: 'Balie Aalter',  sub: '16P' },
+        { key: 'verdiep', label: 'Verdiep Aalter', sub: '8P'  }
+      ],
       refreshMinutes: 1,
       dayStart: 7,   // eerste uur op de tijdlijn
       dayEnd:   19   // laatste uur op de tijdlijn
@@ -69,8 +72,24 @@
       align-items: center;
       flex-shrink: 0;
     }
-    .room-name { font-size: 1.25rem; font-weight: 800; letter-spacing: .3px; }
-    .room-sub  { font-size: .68rem; opacity: .45; margin-top: 2px; }
+    .room-tabs { display: flex; gap: 8px; }
+    .room-tab {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 6px 14px;
+      cursor: pointer;
+      color: var(--text-muted);
+      text-align: left;
+      line-height: 1.3;
+    }
+    .room-tab.active {
+      background: var(--yellow);
+      color: #000;
+      border-color: var(--yellow);
+    }
+    .room-tab-name { font-size: .88rem; font-weight: 800; }
+    .room-tab-sub  { font-size: .62rem; opacity: .65; }
     .clock-time {
       font-size: 2.2rem; font-weight: 200;
       font-variant-numeric: tabular-nums;
@@ -257,10 +276,7 @@
 <div id="app">
 
   <div class="header">
-    <div>
-      <div class="room-name" id="room-label"></div>
-      <div class="room-sub">Vergaderruimte — Winsol</div>
-    </div>
+    <div class="room-tabs" id="room-tabs"></div>
     <div>
       <div class="clock-time" id="ct">--:--</div>
       <div class="clock-date" id="cd">--</div>
@@ -302,6 +318,30 @@
   let lastDate = new Date().toDateString();   // midnight detection
   let inactivityTimer = null;
   const INACTIVITY_MS = 2 * 60 * 1000;       // 2 minuten
+
+  // Geselecteerde zaal — onthoudt keuze via localStorage
+  var selectedRoom = '';
+  try { selectedRoom = localStorage.getItem('selectedRoom') || ''; } catch(e) {}
+  if (!selectedRoom) selectedRoom = CONFIG.rooms[0].key;
+
+  function renderRoomTabs() {
+    var html = '';
+    CONFIG.rooms.forEach(function(r) {
+      var active = r.key === selectedRoom ? ' active' : '';
+      html += '<button class="room-tab' + active + '" onclick="selectRoom(\'' + r.key + '\')">'
+            + '<div class="room-tab-name">' + r.label + '</div>'
+            + '<div class="room-tab-sub">' + r.sub + '</div>'
+            + '</button>';
+    });
+    document.getElementById('room-tabs').innerHTML = html;
+  }
+
+  function selectRoom(key) {
+    selectedRoom = key;
+    try { localStorage.setItem('selectedRoom', key); } catch(e) {}
+    renderRoomTabs();
+    render();
+  }
 
   /* ---- Inactivity: terug naar vandaag na 2 min zonder aanraking ---- */
   function resetInactivity() {
@@ -392,9 +432,14 @@
     const dayStart = new Date(viewDate); dayStart.setHours(0,0,0,0);
     const dayEnd   = new Date(viewDate); dayEnd.setHours(23,59,59,999);
 
-    const events = cachedData
-      ? (cachedData.events||[]).map(norm).filter(e=>e._s<dayEnd&&e._e>dayStart).sort((a,b)=>a._s-b._s)
-      : [];
+    // Haal events op voor de geselecteerde zaal
+    var roomEvents = [];
+    if (cachedData) {
+      var roomData = cachedData[selectedRoom];
+      if (Array.isArray(roomData)) roomEvents = roomData;
+      else if (roomData && Array.isArray(roomData.events)) roomEvents = roomData.events;
+    }
+    const events = roomEvents.map(norm).filter(e=>e._s<dayEnd&&e._e>dayStart).sort((a,b)=>a._s-b._s);
 
     const current = today ? events.find(e=>e._s<=now&&e._e>now) : null;
     const next    = today ? events.find(e=>e._s>now) : null;
@@ -574,7 +619,7 @@
   }, { passive: true });
 
   /* ---- Boot ---- */
-  document.getElementById('room-label').textContent = CONFIG.roomLabel;
+  renderRoomTabs();
   renderNav();
   fetchAndRender();
   setInterval(fetchAndRender, CONFIG.refreshMinutes * 60 * 1000);
